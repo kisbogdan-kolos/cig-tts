@@ -9,11 +9,18 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import hu.kszi2.cigtts.MainActivity
 import hu.kszi2.cigtts.R
 import hu.kszi2.cigtts.tts.TtsManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.*
 import okio.ByteString
 
@@ -22,9 +29,20 @@ class TtsWebSocketService : Service() {
     private lateinit var ttsManager: TtsManager
     private var webSocket: WebSocket? = null
     private val client = OkHttpClient()
+    
+    private var wakeLock: PowerManager.WakeLock? = null
+    
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var isDestroyed = false
+    private val reconnectDelayMs = 3000L
 
     override fun onCreate() {
         super.onCreate()
+        
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CigTTS::WebSocketWakeLock")
+        wakeLock?.acquire()
+        
         ttsManager = TtsManager(this)
         createNotificationChannel()
     }
@@ -43,6 +61,8 @@ class TtsWebSocketService : Service() {
     }
 
     private fun connectWebSocket() {
+        if (isDestroyed) return
+        
         val request = Request.Builder()
             .url("wss://cigtts.kszi2.hu/tts") // Using a public test websocket URL
             .build()
@@ -62,20 +82,38 @@ class TtsWebSocketService : Service() {
                 Log.d(TAG, "Received bytes: ${bytes.hex()}")
             }
 
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WebSocket closing: $reason")
-                webSocket.close(1000, null)
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "WebSocket closed: $reason")
+                scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure", t)
-                // Implement reconnection logic if necessary
+                scheduleReconnect()
             }
         })
     }
 
+    private fun scheduleReconnect() {
+        if (isDestroyed) return
+        serviceScope.launch {
+            Log.d(TAG, "Reconnecting in ${reconnectDelayMs / 1000} seconds...")
+            delay(reconnectDelayMs)
+            if (!isDestroyed) {
+                connectWebSocket()
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        isDestroyed = true
+        serviceScope.cancel()
         webSocket?.close(1000, "Service destroyed")
         client.dispatcher.executorService.shutdown()
         ttsManager.shutdown()
