@@ -73,6 +73,13 @@ fun TtsTestingScreen(onSpeak: (String) -> Unit, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        Text(
+            text = "CigTTS (100% vibe coded)",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+        
         OutlinedTextField(
             value = textToSpeak,
             onValueChange = { textToSpeak = it },
