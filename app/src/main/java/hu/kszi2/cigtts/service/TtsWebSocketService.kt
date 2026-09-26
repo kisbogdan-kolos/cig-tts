@@ -21,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.*
 import okio.ByteString
 
@@ -70,6 +71,7 @@ class TtsWebSocketService : Service() {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket connected")
+                isConnected.value = true
                 webSocket.send("WebSocket connection established. TTS is ready.")
             }
 
@@ -84,11 +86,13 @@ class TtsWebSocketService : Service() {
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket closed: $reason")
+                isConnected.value = false
                 scheduleReconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WebSocket failure", t)
+                isConnected.value = false
                 scheduleReconnect()
             }
         })
@@ -107,6 +111,7 @@ class TtsWebSocketService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isConnected.value = false
         wakeLock?.let {
             if (it.isHeld) {
                 it.release()
@@ -157,5 +162,7 @@ class TtsWebSocketService : Service() {
         private const val TAG = "TtsWebSocketService"
         private const val CHANNEL_ID = "TtsWebSocketChannel"
         private const val NOTIFICATION_ID = 1
+        
+        val isConnected = MutableStateFlow(false)
     }
 }

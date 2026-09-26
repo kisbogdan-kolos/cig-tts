@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import hu.kszi2.cigtts.service.TtsWebSocketService
 import hu.kszi2.cigtts.tts.TtsManager
 import hu.kszi2.cigtts.ui.theme.CigTTSTheme
@@ -52,6 +53,13 @@ fun TtsTestingScreen(onSpeak: (String) -> Unit, modifier: Modifier = Modifier) {
     var textToSpeak by remember { mutableStateOf("") }
     val context = LocalContext.current
     var isServiceRunning by remember { mutableStateOf(false) }
+    val isConnected by TtsWebSocketService.isConnected.collectAsState()
+
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            isServiceRunning = true
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -115,10 +123,16 @@ fun TtsTestingScreen(onSpeak: (String) -> Unit, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isServiceRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                containerColor = if (isConnected) Color(0xFF4CAF50) 
+                                 else if (isServiceRunning) MaterialTheme.colorScheme.error 
+                                 else MaterialTheme.colorScheme.primary
             )
         ) {
-            Text(if (isServiceRunning) "Stop WebSocket Service" else "Start WebSocket Service")
+            Text(
+                if (isConnected) "Disconnect (Online)" 
+                else if (isServiceRunning) "Stop Service (Connecting...)" 
+                else "Connect (Offline)"
+            )
         }
     }
 }
